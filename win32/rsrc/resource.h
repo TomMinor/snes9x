@@ -37,6 +37,7 @@
 #define IDB_LOCKEDFOLDER                148
 #define IDB_HIDDENFOLDER                149
 #define IDD_MULTICART                   150
+#define IDD_GAMELIST					151
 #define IDC_DRIVER                      1001
 #define IDC_BUFLEN                      1002
 #define IDC_RATE                        1003
@@ -361,6 +362,8 @@
 #define IDC_SHADER_HLSL_BROWSE          3016
 #define IDC_SHADER_GROUP                3017
 #define IDC_SHADER_GLSL_BROWSE          3018
+#define IDC_GAMELIST_LIST				3019
+
 #define ID_FILE_EXIT                    40001
 #define ID_WINDOW_HIDEMENUBAR           40004
 #define ID_FILE_AVI_RECORDING           40005
@@ -499,6 +502,7 @@
 #define ID_SAVEMEMPACK                  40175
 #define ID_FILE_SAVE_FILE               40176
 #define ID_FILE_LOAD_FILE               40177
+#define ID_FILE_LOAD_GAMELIST           40178
 
 // Next default values for new objects
 // 

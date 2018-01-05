@@ -270,6 +270,7 @@ INT_PTR CALLBACK DlgAboutProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
 INT_PTR CALLBACK DlgEmulatorProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 
 INT_PTR CALLBACK DlgOpenROMProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
+INT_PTR CALLBACK DlgGamelistProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK DlgMultiROMProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT CALLBACK DlgChildSplitProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
 INT_PTR CALLBACK DlgNPProgress(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam);
@@ -1480,6 +1481,14 @@ static bool DoOpenRomDialog(TCHAR filename [_MAX_PATH], bool noCustomDlg = false
 	}
 }
 
+static bool DoOpenRomListDialog(TCHAR filename[_MAX_PATH])
+{
+	char filepath[MAX_PATH];
+	const bool ok = (1 <= DialogBoxParam(g_hInst, MAKEINTRESOURCE(IDD_GAMELIST), GUI.hWnd, DlgGamelistProc, (LPARAM)NULL));
+
+	return false;
+}
+
 bool WinMoviePlay(LPCTSTR filename)
 {
 	struct MovieInfo info;
@@ -1917,7 +1926,7 @@ LRESULT CALLBACK WinProc(
 				{
 					S9xMessage (S9X_INFO, S9X_NETPLAY_NOT_SERVER, WINPROC_DISCONNECT);
 					break;
-				}
+				}	
 #endif
 				RestoreGUIDisplay ();
 
@@ -1965,7 +1974,7 @@ LRESULT CALLBACK WinProc(
 			break;
 
 		case ID_FILE_LOAD_GAME:
-			{
+			{	
 				TCHAR filename [_MAX_PATH];
 
 				RestoreGUIDisplay ();
@@ -1977,6 +1986,22 @@ LRESULT CALLBACK WinProc(
 				RestoreSNESDisplay ();
 			}
 			break;
+
+		case ID_FILE_LOAD_GAMELIST:
+		{
+			TCHAR filename[_MAX_PATH];
+
+			RestoreGUIDisplay();
+
+			// uMsg
+
+			if (DoOpenRomListDialog(filename)) {
+				LoadROM(filename);
+			}
+
+			RestoreSNESDisplay();
+		}
+		break;
 
 		case ID_FILE_EXIT:
             S9xSetPause (PAUSE_EXIT);
@@ -5756,6 +5781,117 @@ void ListFilesFromFolder(HWND hDlg, RomDataList** prdl)
 	*prdl=rdl;
 	ListView_SetItemCountEx (GetDlgItem(hDlg, IDC_ROMLIST), count, 0);
 	ListView_SetItemState (GetDlgItem(hDlg,IDC_ROMLIST), 0, LVIS_SELECTED|LVIS_FOCUSED,LVIS_SELECTED|LVIS_FOCUSED);
+}
+
+void recursivelyFindFileTypes(std::vector<std::string>& found, const char* rootDir)
+{
+	const std::string extensions[] = {
+		"*.smc",
+		"*.sfc",
+		"*.fig"
+	};
+
+	for (int i = 0; i < sizeof(extensions) / sizeof(std::string); i++)
+	{
+		const std::string dir(rootDir);
+		std::string pattern = dir + "/" + extensions[i];
+
+		WIN32_FIND_DATAA data;
+		HANDLE hFind = INVALID_HANDLE_VALUE;
+		hFind = FindFirstFileA(pattern.c_str(), &data);
+
+		if (hFind != INVALID_HANDLE_VALUE)
+		{
+			do
+			{
+				found.push_back((char*)data.cFileName);
+			} while (FindNextFileA(hFind, &data) != 0);
+
+			FindClose(hFind);
+		}
+	}
+}
+
+INT_PTR CALLBACK DlgGamelistProc(HWND hDlg, UINT msg, WPARAM wParam, LPARAM lParam)
+{
+	// Bit janky
+	static std::vector<std::string> foundFiles;
+
+	switch (msg)
+	{
+	case WM_INITDIALOG: {
+		WinRefreshDisplay();
+
+		foundFiles.clear();
+
+		const char* searchDir = S9xGetDirectory(ROM_DIR);
+		recursivelyFindFileTypes(foundFiles, searchDir);
+
+		HWND hwndList = GetDlgItem(hDlg, IDC_GAMELIST_LIST);
+		for (int i = 0; i < foundFiles.size(); i++)
+		{
+			int wchars_num = MultiByteToWideChar(CP_UTF8, 0, foundFiles[i].c_str(), -1, NULL, 0);
+			wchar_t* wstr = new wchar_t[wchars_num];
+			MultiByteToWideChar(CP_UTF8, 0, foundFiles[i].c_str(), -1, wstr, wchars_num);
+			
+			int pos = (int)SendMessage(hwndList, LB_ADDSTRING, 0, (LPARAM)wstr);
+			
+			SendMessage(hwndList, LB_SETITEMDATA, pos, (LPARAM)i);
+		}
+
+		SetFocus(hwndList);
+		
+		SendMessage(hwndList, LB_SETCURSEL, 0, 0);
+
+		return FALSE;
+
+		break;
+	}
+	case WM_COMMAND:
+	{
+		switch (LOWORD(wParam))
+		{
+		case IDOK:
+		{
+			HWND hwndList = GetDlgItem(hDlg, IDC_GAMELIST_LIST);
+
+			// Get selected index.
+			int lbItem = (int)SendMessage(hwndList, LB_GETCURSEL, 0, 0);
+
+			// Get item data.
+			int index = (int)SendMessage(hwndList, LB_GETITEMDATA, lbItem, 0);
+			if (index > -1)
+			{
+				EndDialog(hDlg, 1);
+
+				const std::string& path = foundFiles[index];
+
+				size_t newsize = path.length() + 1;
+				wchar_t * wcstring = new wchar_t[newsize];
+				size_t convertedChars = 0;
+				mbstowcs_s(&convertedChars, wcstring, newsize, path.c_str(), _TRUNCATE);
+
+				bool result = LoadROM(wcstring);
+
+				return true;
+			}
+			else {
+				EndDialog(hDlg, 0);
+				return false;
+			}
+		}
+		case IDCANCEL:
+		{
+			EndDialog(hDlg, 0);
+			return true;
+		}
+		case IDD_GAMELIST:
+			break;
+		}
+	}
+	}
+
+	return false;
 }
 
 // load multicart rom dialog
